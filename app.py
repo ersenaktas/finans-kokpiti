@@ -11,72 +11,44 @@ st.set_page_config(page_title="Mühendis Portföyü", layout="wide", page_icon="
 st.title("🚀 Finansal Özgürlük Kokpiti")
 
 # ---------------------------------------------------------
-# 1. ÖZEL FONKSİYON: FINTABLES FİYAT AVCISI
+# 1. AKILLI FONKSİYONLAR (HEM FİYAT HEM KAYNAK DÖNER)
 # ---------------------------------------------------------
-@st.cache_data(ttl=600)
-def get_fintables_price(fund_code):
-    """
-    Fintables.com üzerinden fon fiyatını çeker.
-    Reklamlara takılmadan HTML içinden veriyi bulur.
-    """
-    url = f"https://fintables.com/fonlar/{fund_code}"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, "html.parser")
-            
-            # Yöntem 1: Sayfa başlığındaki veya meta etiketlerdeki fiyatı ara
-            # Genelde Fintables HTML yapısında fiyat belirgin bir class'tadır ama değişebilir.
-            # En güvenli yöntem: Tüm metni alıp 'Fiyat' kelimesinin yanındaki sayıyı bulmak.
-            
-            text = soup.get_text(" ", strip=True)
-            
-            # Regex: "1.283,29" veya "13,4368" gibi Türkçe formatı yakalar
-            # "Son Fiyat" yazısından sonra gelen sayıyı arar
-            # Örnek metin: "YAY Son Fiyat: 1.283,29 TL"
-            match = re.search(r'Son Fiyat\s*[:\s]*([\d\.]+,\d+)', text)
-            
-            if match:
-                price_str = match.group(1)
-                # Türkçe formatı (1.283,29) -> Python formatına (1283.29) çevir
-                price_float = float(price_str.replace('.', '').replace(',', '.'))
-                return price_float
-            
-            # Yöntem 2: Eğer "Son Fiyat" yazmıyorsa, sayfanın başındaki büyük rakamı ara
-            # Fintables'ta genelde sol üstte fon kodu ve yanında fiyat yazar.
-            # Sayfadaki ilk anlamlı para birimini bulmayı deneyebiliriz.
-            # (Bu kısım yedek, yukarıdaki genelde çalışır)
-            
-    except Exception as e:
-        print(f"Hata ({fund_code}): {e}")
-        
-    return 0.0
 
-# ---------------------------------------------------------
-# 2. YEDEK FONKSİYON: TEFAS (Devlet)
-# ---------------------------------------------------------
 @st.cache_data(ttl=600)
-def get_tefas_price(fund_code):
-    url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fund_code}"
+def get_fund_data(fund_code):
+    """
+    Önce Fintables'ı dener, olmazsa TEFAS'ı dener.
+    Geriye (Fiyat, Kaynakİsmi) döner.
+    """
+    # 1. DENEME: FINTABLES
+    url_fin = f"https://fintables.com/fonlar/{fund_code}"
     headers = {'User-Agent': 'Mozilla/5.0'}
     try:
-        r = requests.get(url, headers=headers, timeout=5)
+        r = requests.get(url_fin, headers=headers, timeout=5)
+        if r.status_code == 200:
+            text = BeautifulSoup(r.content, "html.parser").get_text(" ", strip=True)
+            match = re.search(r'Son Fiyat\s*[:\s]*([\d\.]+,\d+)', text)
+            if match:
+                price = float(match.group(1).replace('.', '').replace(',', '.'))
+                return price, "Fintables"
+    except: pass
+
+    # 2. DENEME: TEFAS
+    url_tefas = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fund_code}"
+    try:
+        r = requests.get(url_tefas, headers=headers, timeout=5)
         soup = BeautifulSoup(r.content, "html.parser")
         val = soup.select_one(".top-list > li:nth-child(1) > span").text
-        return float(val.replace(",", "."))
-    except:
-        return 0.0
+        price = float(val.replace(",", "."))
+        return price, "TEFAS"
+    except: pass
 
-# ---------------------------------------------------------
-# 3. KAYSERİ ALTIN (Tablo/Reklam Korumalı)
-# ---------------------------------------------------------
+    # 3. BAŞARISIZ
+    return 0.0, "Manuel"
+
 @st.cache_data(ttl=900)
 def get_kayseri_gold():
-    prices = {"ceyrek": 0, "tam": 0, "bilezik": 0}
+    prices = {"ceyrek": 0, "tam": 0, "bilezik": 0, "src": "Manuel"}
     try:
         url = "https://www.kaysarder.org.tr/"
         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -90,22 +62,19 @@ def get_kayseri_gold():
         if mc: prices["ceyrek"] = float(mc.group(1).replace('.', '').replace(',', '.'))
         if mt: prices["tam"] = float(mt.group(1).replace('.', '').replace(',', '.'))
         if mb: prices["bilezik"] = float(mb.group(1).replace('.', '').replace(',', '.'))
+        
+        if prices["ceyrek"] > 0: prices["src"] = "Kayseri"
     except: pass
     return prices
 
 # ---------------------------------------------------------
-# 4. VERİLERİ ÇEK
+# 2. VERİLERİ ÇEK
 # ---------------------------------------------------------
 
-# FONLAR (Önce Fintables, Olmazsa TEFAS)
-p_yas = get_fintables_price("YAS")
-if p_yas == 0: p_yas = get_tefas_price("YAS")
-
-p_yay = get_fintables_price("YAY")
-if p_yay == 0: p_yay = get_tefas_price("YAY")
-
-p_ylb = get_fintables_price("YLB")
-if p_ylb == 0: p_ylb = get_tefas_price("YLB")
+# FONLAR (Fiyat ve Kaynak bilgisi beraber gelir)
+p_yas, src_yas = get_fund_data("YAS")
+p_yay, src_yay = get_fund_data("YAY")
+p_ylb, src_ylb = get_fund_data("YLB")
 
 # PİYASA (Yahoo)
 try:
@@ -124,52 +93,54 @@ def get_yf(t):
 usd_tl = get_yf("TRY=X")
 eur_tl = get_yf("EURTRY=X")
 ons = get_yf("GC=F")
-if usd_tl > 0 and ons > 0: has_gram = (ons * usd_tl) / 31.10
-else: has_gram = 0
+has_gram = (ons * usd_tl) / 31.10 if (usd_tl > 0 and ons > 0) else 0
 
 kayseri = get_kayseri_gold()
 
 # ---------------------------------------------------------
-# 5. YAN MENÜ (MANUEL/OTO GİRİŞ)
+# 3. YAN MENÜ (HAFIZALI GİRİŞLER)
 # ---------------------------------------------------------
 st.sidebar.header("🎛️ Veri Girişi")
 
 # FONLAR
 st.sidebar.subheader("📈 Fonlar")
+
 # YAS
-def_yas = p_yas if p_yas > 0 else 13.43 # Tahmini son fiyat
-in_yas_fiyat = st.sidebar.number_input("YAS Fiyatı", value=def_yas, format="%.4f")
-in_yas_adet = st.sidebar.number_input("YAS Adet", value=734) # Sizin adet
+def_yas = p_yas if p_yas > 0 else 13.43
+in_yas_fiyat = st.sidebar.number_input("YAS Fiyat", value=def_yas, format="%.4f")
+in_yas_adet = st.sidebar.number_input("YAS Adet", value=734) 
 
 # YAY
-def_yay = p_yay if p_yay > 0 else 1283.00 # Tahmini son fiyat
-in_yay_fiyat = st.sidebar.number_input("YAY Fiyatı", value=def_yay, format="%.4f")
-in_yay_adet = st.sidebar.number_input("YAY Adet", value=7) # Sizin adet
+def_yay = p_yay if p_yay > 0 else 5.00 # Düzeltilmiş tahmin
+in_yay_fiyat = st.sidebar.number_input("YAY Fiyat", value=def_yay, format="%.4f")
+in_yay_adet = st.sidebar.number_input("YAY Adet", value=7) 
 
 # YLB
-def_ylb = p_ylb if p_ylb > 0 else 1.4017 # Tahmini son fiyat
-in_ylb_fiyat = st.sidebar.number_input("YLB Fiyatı", value=def_ylb, format="%.4f")
-in_ylb_adet = st.sidebar.number_input("YLB Adet", value=39400) # Sizin adet
+def_ylb = p_ylb if p_ylb > 0 else 1.40
+in_ylb_fiyat = st.sidebar.number_input("YLB Fiyat", value=def_ylb, format="%.4f")
+in_ylb_adet = st.sidebar.number_input("YLB Adet", value=39400) 
 
 # ALTINLAR
 st.sidebar.markdown("---")
 st.sidebar.subheader("🥇 Altınlar")
 banka_gr = st.sidebar.number_input("Banka Altın (Gr)", value=130)
 
+# Çeyrek
 def_c = kayseri["ceyrek"] if kayseri["ceyrek"] > 0 else 9600.0
-def_b = kayseri["bilezik"] if kayseri["bilezik"] > 0 else 5600.0
-def_t = kayseri["tam"] if kayseri["tam"] > 0 else 38400.0
-
 in_c_fiyat = st.sidebar.number_input("Çeyrek Fiyat", value=def_c)
 in_c_adet = st.sidebar.number_input("Çeyrek Adet", value=53)
 
+# Bilezik
+def_b = kayseri["bilezik"] if kayseri["bilezik"] > 0 else 5600.0
 in_b_fiyat = st.sidebar.number_input("Bilezik Fiyat", value=def_b)
 in_b_gr = st.sidebar.number_input("Bilezik Gram", value=10)
 
+# Tam
+def_t = kayseri["tam"] if kayseri["tam"] > 0 else 38400.0
 in_t_fiyat = st.sidebar.number_input("Tam Fiyat", value=def_t)
 in_t_adet = st.sidebar.number_input("Tam Adet", value=0)
 
-# DÖVİZ
+# DİĞER
 st.sidebar.markdown("---")
 st.sidebar.subheader("💶 Diğer")
 def_eur = eur_tl if eur_tl > 0 else 49.97
@@ -178,7 +149,7 @@ in_eur_miktar = st.sidebar.number_input("Euro Miktarı", value=10410)
 in_borc = st.sidebar.number_input("Kredi Kartı Borcu", value=34321)
 
 # ---------------------------------------------------------
-# 6. HESAPLAMALAR
+# 4. HESAPLAMALAR
 # ---------------------------------------------------------
 v_yas = in_yas_fiyat * in_yas_adet
 v_yay = in_yay_fiyat * in_yay_adet
@@ -195,44 +166,55 @@ t_euro = in_eur_miktar * in_eur_kur
 net = t_fon + t_gold + t_euro
 
 # ---------------------------------------------------------
-# 7. EKRAN
+# 5. EKRAN GÖSTERİMİ
 # ---------------------------------------------------------
-st.subheader("🏷️ Piyasa (Canlı)")
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Has Altın", f"{safe_has:,.0f} TL")
-c2.metric("Çeyrek", f"{in_c_fiyat:,.0f} TL")
-c3.metric("Dolar", f"{usd_tl:.2f}")
-c4.metric("YAS Fiyat", f"{in_yas_fiyat:.4f}")
-c5.metric("YAY Fiyat", f"{in_yay_fiyat:.4f}")
+
+# PİYASA VE KAYNAK GÖSTERGELERİ (İSTEDİĞİNİZ KISIM)
+st.subheader("🏷️ Canlı Fiyatlar & Kaynaklar")
+
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+
+# Metric içinde "delta" parametresini kaynak göstermek için kullanıyoruz
+k1.metric("YAS Fiyat", f"{in_yas_fiyat:.4f}", f"Kaynak: {src_yas}")
+k2.metric("YAY Fiyat", f"{in_yay_fiyat:.4f}", f"Kaynak: {src_yay}")
+k3.metric("YLB Fiyat", f"{in_ylb_fiyat:.4f}", f"Kaynak: {src_ylb}")
+k4.metric("Dolar/TL", f"{usd_tl:.2f}", "Yahoo")
+k5.metric("Euro/TL", f"{in_eur_kur:.2f}", "Yahoo/Manuel")
+k6.metric("Has Altın", f"{safe_has:,.0f}", "Global Ons")
+
+# Kayseri Verileri
+m1, m2 = st.columns(2)
+m1.metric("Çeyrek Altın", f"{in_c_fiyat:,.0f} TL", f"Kaynak: {kayseri['src']}")
+m2.metric("Bilezik (22k)", f"{in_b_fiyat:,.0f} TL", f"Kaynak: {kayseri['src']}")
 
 st.markdown("---")
 
-k1, k2, k3 = st.columns(3)
-k1.metric("TOPLAM SERVET", f"{net:,.0f} TL")
-k2.metric("TOPLAM ALTIN", f"{t_gold:,.0f} TL")
-k3.metric("TOPLAM FON", f"{t_fon:,.0f} TL")
+# ANA KARTLAR
+c1, c2, c3 = st.columns(3)
+c1.metric("TOPLAM SERVET", f"{net:,.0f} TL")
+c2.metric("TOPLAM ALTIN", f"{t_gold:,.0f} TL")
+c3.metric("TOPLAM FON", f"{t_fon:,.0f} TL")
 
 st.markdown("---")
 
-st.subheader("📊 Fon Detayı")
+# DETAYLAR
+st.subheader("📊 Portföy Dağılımı")
 f1, f2, f3 = st.columns(3)
-f1.metric("YAS", f"{v_yas:,.0f} TL", f"{in_yas_adet} Adet")
-f2.metric("YAY", f"{v_yay:,.0f} TL", f"{in_yay_adet} Adet")
-f3.metric("YLB", f"{v_ylb:,.0f} TL", f"{in_ylb_adet} Adet")
-
-st.markdown("---")
+f1.metric("YAS (Koç)", f"{v_yas:,.0f} TL", f"{in_yas_adet} Adet")
+f2.metric("YAY (Tekn)", f"{v_yay:,.0f} TL", f"{in_yay_adet} Adet")
+f3.metric("YLB (Nakit)", f"{v_ylb:,.0f} TL", f"{in_ylb_adet} Adet")
 
 l_col, r_col = st.columns([2, 1])
 with l_col:
-    st.subheader("💳 Güvenlik")
+    st.subheader("💳 Güvenlik Barı")
     if in_borc > 0: oran = (v_ylb / in_borc) * 100
     elif v_ylb > 0: oran = 100
     else: oran = 0
     st.progress(min(int(oran), 100))
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Borç", f"{in_borc:,.0f}")
-    m2.metric("Nakit", f"{v_ylb:,.0f}")
-    m3.metric("Durum", "GÜVENLİ" if (v_ylb-in_borc)>=0 else "RİSKLİ", f"{v_ylb-in_borc:,.0f}")
+    x1, x2, x3 = st.columns(3)
+    x1.metric("Borç", f"{in_borc:,.0f}")
+    x2.metric("Nakit", f"{v_ylb:,.0f}")
+    x3.metric("Durum", "GÜVENLİ" if (v_ylb-in_borc)>=0 else "RİSKLİ", f"{v_ylb-in_borc:,.0f}")
 
 with r_col:
     st.subheader("👶 Çocuk")
