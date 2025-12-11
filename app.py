@@ -17,17 +17,17 @@ if 'init' not in st.session_state:
     # YAS
     st.session_state['yas_val'] = 13.43
     st.session_state['yas_cost'] = 13.43
-    st.session_state['yas_src'] = "-"
+    st.session_state['yas_src'] = "Başlangıç"
     
     # YAY
     st.session_state['yay_val'] = 1283.30
     st.session_state['yay_cost'] = 1283.30
-    st.session_state['yay_src'] = "-"
+    st.session_state['yay_src'] = "Başlangıç"
     
     # YLB
     st.session_state['ylb_val'] = 1.40
     st.session_state['ylb_cost'] = 1.40
-    st.session_state['ylb_src'] = "-"
+    st.session_state['ylb_src'] = "Başlangıç"
     
     st.session_state['last_update'] = "Henüz Yapılmadı"
     st.session_state['init'] = True
@@ -113,17 +113,17 @@ st.sidebar.subheader("📈 Fonlar (Adet & Maliyet)")
 with st.sidebar.expander("YAS (Koç)", expanded=True):
     in_yas_fiyat = st.number_input("YAS Fiyat", value=st.session_state['yas_val'], format="%.4f")
     in_yas_adet = st.number_input("YAS Adet", value=734)
-    in_yas_maliyet = st.number_input("YAS Ort. Maliyet", value=st.session_state['yas_cost'], format="%.4f")
+    in_yas_maliyet = st.number_input("YAS Maliyet", value=st.session_state['yas_cost'], format="%.4f")
 
 with st.sidebar.expander("YAY (Teknoloji)", expanded=True):
     in_yay_fiyat = st.number_input("YAY Fiyat", value=st.session_state['yay_val'], format="%.4f")
     in_yay_adet = st.number_input("YAY Adet", value=7)
-    in_yay_maliyet = st.number_input("YAY Ort. Maliyet", value=st.session_state['yay_cost'], format="%.4f")
+    in_yay_maliyet = st.number_input("YAY Maliyet", value=st.session_state['yay_cost'], format="%.4f")
 
 with st.sidebar.expander("YLB (Nakit)", expanded=False):
     in_ylb_fiyat = st.number_input("YLB Fiyat", value=st.session_state['ylb_val'], format="%.4f")
     in_ylb_adet = st.number_input("YLB Adet", value=39400)
-    in_ylb_maliyet = st.number_input("YLB Ort. Maliyet", value=st.session_state['ylb_cost'], format="%.4f")
+    in_ylb_maliyet = st.number_input("YLB Maliyet", value=st.session_state['ylb_cost'], format="%.4f")
 
 # --- ALTINLAR ---
 kayseri = get_kayseri_gold()
@@ -157,14 +157,13 @@ try:
 except:
     usd_tl, eur_tl, ons = 0, 0, 0
 
-# Euro maliyetini varsayılan olarak güncel kur yapıyoruz ki saçma kâr çıkmasın
+# Euro maliyet varsayılan
 def_eur_cost = eur_tl if eur_tl > 0 else 49.97
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("💶 Döviz & Borç")
 in_eur_kur = st.sidebar.number_input("Euro Kuru (Canlı)", value=def_eur_cost)
 in_eur_adet = st.sidebar.number_input("Euro Miktarı", value=10410)
-# Varsayılan maliyeti güncel fiyata eşitledim. Siz isterseniz değiştirin.
 in_eur_maliyet = st.sidebar.number_input("Euro Ort. Maliyet", value=in_eur_kur)
 
 in_borc = st.sidebar.number_input("Kredi Kartı Borcu", value=34321)
@@ -188,7 +187,7 @@ t_fon = val_yas + val_yay + val_ylb
 # Euro
 val_eur, kar_eur_tl, kar_eur_pct = calc_profit(in_eur_adet, in_eur_kur, in_eur_maliyet)
 
-# Altın
+# Altın Hesabı
 safe_has = (ons * usd_tl) / 31.10 if (ons>0 and usd_tl>0) else 3100.0
 v_banka = banka_gr * safe_has
 v_ziynet = (in_c_adet * in_c_fiyat) + (in_t_adet * in_t_fiyat)
@@ -202,15 +201,22 @@ net = t_fon + t_gold + val_eur
 # ---------------------------------------------------------
 st.title("🚀 Finansal Özgürlük Kokpiti")
 
-# CANLI PİYASA
-st.subheader("🌍 Canlı Piyasa ve Kaynaklar")
+# --- BÖLÜM 1: DÖVİZ VE ALTIN PİYASASI ---
+st.subheader("🌍 Döviz ve Altın Piyasası")
 k1, k2, k3, k4, k5 = st.columns(5)
 
 k1.metric("Euro/TL", f"{in_eur_kur:.2f}", "Canlı")
 k2.metric("Dolar/TL", f"{usd_tl:.2f}", "Canlı")
-k3.metric("YAS Fiyat", f"{in_yas_fiyat:.4f}", f"Kaynak: {st.session_state['yas_src']}")
-k4.metric("YAY Fiyat", f"{in_yay_fiyat:.4f}", f"Kaynak: {st.session_state['yay_src']}")
-k5.metric("YLB Fiyat", f"{in_ylb_fiyat:.4f}", f"Kaynak: {st.session_state['ylb_src']}")
+k3.metric("Has Altın (Gr)", f"{safe_has:,.0f} TL", "Global")
+k4.metric("Çeyrek Altın", f"{in_c_fiyat:,.0f} TL", f"Kaynak: {kayseri['src']}")
+k5.metric("Bilezik (22 Ayar)", f"{in_b_fiyat:,.0f} TL", f"Kaynak: {kayseri['src']}")
+
+# --- BÖLÜM 2: FON PİYASASI ---
+st.subheader("📈 Fon Fiyatları")
+f1, f2, f3 = st.columns(3)
+f1.metric("YAS Fiyat", f"{in_yas_fiyat:.4f}", f"Kaynak: {st.session_state['yas_src']}")
+f2.metric("YAY Fiyat", f"{in_yay_fiyat:.4f}", f"Kaynak: {st.session_state['yay_src']}")
+f3.metric("YLB Fiyat", f"{in_ylb_fiyat:.4f}", f"Kaynak: {st.session_state['ylb_src']}")
 
 st.markdown("---")
 
@@ -244,7 +250,7 @@ with col4:
 
 st.markdown("---")
 
-# GÜVENLİK BARI (TAM EKRAN)
+# GÜVENLİK BARI
 st.subheader("💳 Güvenlik ve Arbitraj Durumu")
 if in_borc > 0: oran = (val_ylb / in_borc) * 100
 elif val_ylb > 0: oran = 100
