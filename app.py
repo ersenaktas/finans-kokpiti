@@ -11,28 +11,25 @@ import pytz
 st.set_page_config(page_title="Mühendis Portföyü", layout="wide", page_icon="🚀")
 
 # ---------------------------------------------------------
-# 1. HAFIZA BAŞLATMA (MALİYETLER EKLENDİ)
+# 1. HAFIZA BAŞLATMA (Hafızada Fiyat + Maliyet + Kaynak tutuyoruz)
 # ---------------------------------------------------------
 if 'init' not in st.session_state:
     # YAS
     st.session_state['yas_val'] = 13.43
-    st.session_state['yas_cost'] = 13.43 # Maliyet
-    st.session_state['yas_src'] = "-"
+    st.session_state['yas_cost'] = 13.43
+    st.session_state['yas_src'] = "Başlangıç"
     
     # YAY
     st.session_state['yay_val'] = 1283.30
     st.session_state['yay_cost'] = 1283.30
-    st.session_state['yay_src'] = "-"
+    st.session_state['yay_src'] = "Başlangıç"
     
     # YLB
     st.session_state['ylb_val'] = 1.40
     st.session_state['ylb_cost'] = 1.40
-    st.session_state['ylb_src'] = "-"
+    st.session_state['ylb_src'] = "Başlangıç"
     
-    # Euro
-    st.session_state['eur_cost'] = 35.50 # Ortalama alış maliyeti
-    
-    st.session_state['last_update'] = "-"
+    st.session_state['last_update'] = "Henüz Yapılmadı"
     st.session_state['init'] = True
 
 # ---------------------------------------------------------
@@ -42,12 +39,16 @@ def fetch_fund_data(fund_code):
     # 1. TEFAS
     try:
         url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fund_code}"
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://www.google.com/'
+        }
         r = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(r.content, "html.parser")
         val = soup.select_one(".top-list > li:nth-child(1) > span").text
         return float(val.replace(",", ".")), "TEFAS"
     except: pass
+    
     # 2. FINTABLES
     try:
         url = f"https://fintables.com/fonlar/{fund_code}"
@@ -57,6 +58,7 @@ def fetch_fund_data(fund_code):
         if match:
              return float(match.group(1).replace('.', '').replace(',', '.')), "Fintables"
     except: pass
+    
     return None, None
 
 @st.cache_data(ttl=900)
@@ -84,7 +86,7 @@ def get_kayseri_gold():
 # ---------------------------------------------------------
 st.sidebar.header("🕹️ Komuta Merkezi")
 if st.sidebar.button("🔄 Piyasayı GÜNCELLE"):
-    with st.spinner('Fiyatlar çekiliyor...'):
+    with st.spinner('Veri kaynaklarına bağlanılıyor...'):
         # Fonlar
         for code in ["YAS", "YAY", "YLB"]:
             p, s = fetch_fund_data(code)
@@ -100,7 +102,7 @@ if st.sidebar.button("🔄 Piyasayı GÜNCELLE"):
 st.sidebar.caption(f"Son Güncelleme: {st.session_state['last_update']}")
 
 # ---------------------------------------------------------
-# 4. VERİ GİRİŞLERİ (MALİYET EKLENDİ)
+# 4. VERİ GİRİŞLERİ
 # ---------------------------------------------------------
 st.sidebar.markdown("---")
 st.sidebar.header("🎛️ Portföy Girişi")
@@ -108,21 +110,18 @@ st.sidebar.header("🎛️ Portföy Girişi")
 # --- FONLAR ---
 st.sidebar.subheader("📈 Fonlar (Adet & Maliyet)")
 
-# YAS
 with st.sidebar.expander("YAS (Koç)", expanded=True):
-    in_yas_fiyat = st.number_input("YAS Güncel Fiyat", value=st.session_state['yas_val'], format="%.4f")
+    in_yas_fiyat = st.number_input("YAS Fiyat", value=st.session_state['yas_val'], format="%.4f")
     in_yas_adet = st.number_input("YAS Adet", value=734)
     in_yas_maliyet = st.number_input("YAS Ort. Maliyet", value=st.session_state['yas_cost'], format="%.4f")
 
-# YAY
 with st.sidebar.expander("YAY (Teknoloji)", expanded=True):
-    in_yay_fiyat = st.number_input("YAY Güncel Fiyat", value=st.session_state['yay_val'], format="%.4f")
+    in_yay_fiyat = st.number_input("YAY Fiyat", value=st.session_state['yay_val'], format="%.4f")
     in_yay_adet = st.number_input("YAY Adet", value=7)
     in_yay_maliyet = st.number_input("YAY Ort. Maliyet", value=st.session_state['yay_cost'], format="%.4f")
 
-# YLB
 with st.sidebar.expander("YLB (Nakit)", expanded=False):
-    in_ylb_fiyat = st.number_input("YLB Güncel Fiyat", value=st.session_state['ylb_val'], format="%.4f")
+    in_ylb_fiyat = st.number_input("YLB Fiyat", value=st.session_state['ylb_val'], format="%.4f")
     in_ylb_adet = st.number_input("YLB Adet", value=39400)
     in_ylb_maliyet = st.number_input("YLB Ort. Maliyet", value=st.session_state['ylb_cost'], format="%.4f")
 
@@ -146,7 +145,6 @@ in_t_fiyat = st.sidebar.number_input("Tam Fiyat", value=def_t)
 in_t_adet = st.sidebar.number_input("Tam Adet", value=0)
 
 # --- DÖVİZ ---
-# Yahoo'dan Canlı Döviz
 try:
     tickers = ["TRY=X", "GC=F", "EURTRY=X", "FROTO.IS", "THYAO.IS", "TUPRS.IS"]
     m_data = yf.download(tickers, period="2d", group_by='ticker', progress=False)
@@ -164,14 +162,13 @@ st.sidebar.subheader("💶 Döviz & Borç")
 def_eur = eur_tl if eur_tl > 0 else 49.97
 in_eur_kur = st.sidebar.number_input("Euro Kuru (Canlı)", value=def_eur)
 in_eur_adet = st.sidebar.number_input("Euro Miktarı", value=10410)
-in_eur_maliyet = st.sidebar.number_input("Euro Ort. Maliyet", value=35.50) # Tahmini maliyetiniz
+in_eur_maliyet = st.sidebar.number_input("Euro Ort. Maliyet", value=35.50)
 
 in_borc = st.sidebar.number_input("Kredi Kartı Borcu", value=34321)
 
 # ---------------------------------------------------------
-# 5. HESAPLAMALAR (KÂR/ZARAR MOTORU)
+# 5. HESAPLAMALAR (GELİR GERİ GELDİ!)
 # ---------------------------------------------------------
-
 def calc_profit(adet, guncel, maliyet):
     toplam_deger = adet * guncel
     toplam_maliyet = adet * maliyet
@@ -185,7 +182,7 @@ val_yay, kar_yay_tl, kar_yay_pct = calc_profit(in_yay_adet, in_yay_fiyat, in_yay
 val_ylb, kar_ylb_tl, kar_ylb_pct = calc_profit(in_ylb_adet, in_ylb_fiyat, in_ylb_maliyet)
 t_fon = val_yas + val_yay + val_ylb
 
-# Euro Hesabı
+# Euro
 val_eur, kar_eur_tl, kar_eur_pct = calc_profit(in_eur_adet, in_eur_kur, in_eur_maliyet)
 
 # Altın
@@ -202,14 +199,15 @@ net = t_fon + t_gold + val_eur
 # ---------------------------------------------------------
 st.title("🚀 Finansal Özgürlük Kokpiti")
 
-# CANLI PİYASA BANDI
-st.subheader("🌍 Canlı Piyasa")
+# CANLI PİYASA & KAYNAKLAR
+st.subheader("🌍 Canlı Piyasa ve Kaynaklar")
 k1, k2, k3, k4, k5 = st.columns(5)
+
 k1.metric("Euro/TL", f"{in_eur_kur:.2f}", "Canlı")
 k2.metric("Dolar/TL", f"{usd_tl:.2f}", "Canlı")
-k3.metric("Has Altın", f"{safe_has:,.0f} TL", "Ons Bazlı")
-k4.metric(f"YAS ({st.session_state['yas_src']})", f"{in_yas_fiyat:.4f}")
-k5.metric(f"YAY ({st.session_state['yay_src']})", f"{in_yay_fiyat:.4f}")
+k3.metric("YAS Fiyat", f"{in_yas_fiyat:.4f}", f"Kaynak: {st.session_state['yas_src']}")
+k4.metric("YAY Fiyat", f"{in_yay_fiyat:.4f}", f"Kaynak: {st.session_state['yay_src']}")
+k5.metric("YLB Fiyat", f"{in_ylb_fiyat:.4f}", f"Kaynak: {st.session_state['ylb_src']}")
 
 st.markdown("---")
 
@@ -221,10 +219,9 @@ c3.metric("TOPLAM FON", f"{t_fon:,.0f} TL")
 
 st.markdown("---")
 
-# DETAYLI KÂR/ZARAR TABLOSU
+# KÂR/ZARAR ANALİZİ (GERİ GELDİ!)
 st.subheader("📊 Kâr / Zarar Analizi")
 
-# YAS KART
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.info(f"**YAS (Koç)**\n\nDeğer: {val_yas:,.0f} TL")
