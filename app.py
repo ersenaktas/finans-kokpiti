@@ -5,9 +5,27 @@ from bs4 import BeautifulSoup
 import re
 import pandas as pd
 import math
+from datetime import datetime
+import pytz # Saat dilimi için
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Mühendis Portföyü", layout="wide", page_icon="🚀")
+
+# --- GÜNCELLEME BUTONU VE ZAMAN DAMGASI ---
+# Sol menünün en tepesine koyuyoruz ki kolay erişilsin.
+st.sidebar.header("🕹️ Komuta Merkezi")
+
+if st.sidebar.button("🔄 Verileri Şimdi Güncelle"):
+    # Hafızadaki tüm eski verileri siler ve sayfayı yeniler
+    st.cache_data.clear()
+    st.rerun()
+
+# Şu anki zamanı al (Türkiye Saati)
+tr_timezone = pytz.timezone("Turkey")
+guncel_zaman = datetime.now(tr_timezone).strftime("%d.%m.%Y - %H:%M:%S")
+
+st.sidebar.success(f"Son Güncelleme:\n{guncel_zaman}")
+
 st.title("🚀 Finansal Özgürlük Kokpiti")
 
 # ---------------------------------------------------------
@@ -16,11 +34,8 @@ st.title("🚀 Finansal Özgürlük Kokpiti")
 
 @st.cache_data(ttl=600)
 def get_fund_data(fund_code):
-    """
-    Önce Fintables'ı dener, olmazsa TEFAS'ı dener.
-    Geriye (Fiyat, Kaynakİsmi) döner.
-    """
-    # 1. DENEME: FINTABLES
+    """Fintables -> TEFAS -> Manuel"""
+    # 1. FINTABLES
     url_fin = f"https://fintables.com/fonlar/{fund_code}"
     headers = {'User-Agent': 'Mozilla/5.0'}
     try:
@@ -33,7 +48,7 @@ def get_fund_data(fund_code):
                 return price, "Fintables"
     except: pass
 
-    # 2. DENEME: TEFAS
+    # 2. TEFAS
     url_tefas = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fund_code}"
     try:
         r = requests.get(url_tefas, headers=headers, timeout=5)
@@ -43,7 +58,6 @@ def get_fund_data(fund_code):
         return price, "TEFAS"
     except: pass
 
-    # 3. BAŞARISIZ
     return 0.0, "Manuel"
 
 @st.cache_data(ttl=900)
@@ -71,7 +85,7 @@ def get_kayseri_gold():
 # 2. VERİLERİ ÇEK
 # ---------------------------------------------------------
 
-# FONLAR (Fiyat ve Kaynak bilgisi beraber gelir)
+# FONLAR
 p_yas, src_yas = get_fund_data("YAS")
 p_yay, src_yay = get_fund_data("YAY")
 p_ylb, src_ylb = get_fund_data("YLB")
@@ -100,6 +114,7 @@ kayseri = get_kayseri_gold()
 # ---------------------------------------------------------
 # 3. YAN MENÜ (HAFIZALI GİRİŞLER)
 # ---------------------------------------------------------
+st.sidebar.markdown("---")
 st.sidebar.header("🎛️ Veri Girişi")
 
 # FONLAR
@@ -111,7 +126,7 @@ in_yas_fiyat = st.sidebar.number_input("YAS Fiyat", value=def_yas, format="%.4f"
 in_yas_adet = st.sidebar.number_input("YAS Adet", value=734) 
 
 # YAY
-def_yay = p_yay if p_yay > 0 else 5.00 # Düzeltilmiş tahmin
+def_yay = p_yay if p_yay > 0 else 5.00 
 in_yay_fiyat = st.sidebar.number_input("YAY Fiyat", value=def_yay, format="%.4f")
 in_yay_adet = st.sidebar.number_input("YAY Adet", value=7) 
 
@@ -169,12 +184,11 @@ net = t_fon + t_gold + t_euro
 # 5. EKRAN GÖSTERİMİ
 # ---------------------------------------------------------
 
-# PİYASA VE KAYNAK GÖSTERGELERİ (İSTEDİĞİNİZ KISIM)
-st.subheader("🏷️ Canlı Fiyatlar & Kaynaklar")
+# PİYASA VE KAYNAK GÖSTERGELERİ
+st.subheader(f"🏷️ Canlı Fiyatlar (Güncelleme: {guncel_zaman})")
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 
-# Metric içinde "delta" parametresini kaynak göstermek için kullanıyoruz
 k1.metric("YAS Fiyat", f"{in_yas_fiyat:.4f}", f"Kaynak: {src_yas}")
 k2.metric("YAY Fiyat", f"{in_yay_fiyat:.4f}", f"Kaynak: {src_yay}")
 k3.metric("YLB Fiyat", f"{in_ylb_fiyat:.4f}", f"Kaynak: {src_ylb}")
@@ -182,7 +196,6 @@ k4.metric("Dolar/TL", f"{usd_tl:.2f}", "Yahoo")
 k5.metric("Euro/TL", f"{in_eur_kur:.2f}", "Yahoo/Manuel")
 k6.metric("Has Altın", f"{safe_has:,.0f}", "Global Ons")
 
-# Kayseri Verileri
 m1, m2 = st.columns(2)
 m1.metric("Çeyrek Altın", f"{in_c_fiyat:,.0f} TL", f"Kaynak: {kayseri['src']}")
 m2.metric("Bilezik (22k)", f"{in_b_fiyat:,.0f} TL", f"Kaynak: {kayseri['src']}")
