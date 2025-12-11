@@ -11,23 +11,23 @@ import pytz
 st.set_page_config(page_title="Mühendis Portföyü", layout="wide", page_icon="🚀")
 
 # ---------------------------------------------------------
-# 1. HAFIZA BAŞLATMA (Hafızada Fiyat + Maliyet + Kaynak tutuyoruz)
+# 1. HAFIZA BAŞLATMA
 # ---------------------------------------------------------
 if 'init' not in st.session_state:
     # YAS
     st.session_state['yas_val'] = 13.43
     st.session_state['yas_cost'] = 13.43
-    st.session_state['yas_src'] = "Başlangıç"
+    st.session_state['yas_src'] = "-"
     
     # YAY
     st.session_state['yay_val'] = 1283.30
     st.session_state['yay_cost'] = 1283.30
-    st.session_state['yay_src'] = "Başlangıç"
+    st.session_state['yay_src'] = "-"
     
     # YLB
     st.session_state['ylb_val'] = 1.40
     st.session_state['ylb_cost'] = 1.40
-    st.session_state['ylb_src'] = "Başlangıç"
+    st.session_state['ylb_src'] = "-"
     
     st.session_state['last_update'] = "Henüz Yapılmadı"
     st.session_state['init'] = True
@@ -146,7 +146,7 @@ in_t_adet = st.sidebar.number_input("Tam Adet", value=0)
 
 # --- DÖVİZ ---
 try:
-    tickers = ["TRY=X", "GC=F", "EURTRY=X", "FROTO.IS", "THYAO.IS", "TUPRS.IS"]
+    tickers = ["TRY=X", "GC=F", "EURTRY=X"]
     m_data = yf.download(tickers, period="2d", group_by='ticker', progress=False)
     def get_yf(t):
         v = m_data[t]['Close'].iloc[-1]
@@ -157,17 +157,20 @@ try:
 except:
     usd_tl, eur_tl, ons = 0, 0, 0
 
+# Euro maliyetini varsayılan olarak güncel kur yapıyoruz ki saçma kâr çıkmasın
+def_eur_cost = eur_tl if eur_tl > 0 else 49.97
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("💶 Döviz & Borç")
-def_eur = eur_tl if eur_tl > 0 else 49.97
-in_eur_kur = st.sidebar.number_input("Euro Kuru (Canlı)", value=def_eur)
+in_eur_kur = st.sidebar.number_input("Euro Kuru (Canlı)", value=def_eur_cost)
 in_eur_adet = st.sidebar.number_input("Euro Miktarı", value=10410)
-in_eur_maliyet = st.sidebar.number_input("Euro Ort. Maliyet", value=35.50)
+# Varsayılan maliyeti güncel fiyata eşitledim. Siz isterseniz değiştirin.
+in_eur_maliyet = st.sidebar.number_input("Euro Ort. Maliyet", value=in_eur_kur)
 
 in_borc = st.sidebar.number_input("Kredi Kartı Borcu", value=34321)
 
 # ---------------------------------------------------------
-# 5. HESAPLAMALAR (GELİR GERİ GELDİ!)
+# 5. HESAPLAMALAR
 # ---------------------------------------------------------
 def calc_profit(adet, guncel, maliyet):
     toplam_deger = adet * guncel
@@ -199,7 +202,7 @@ net = t_fon + t_gold + val_eur
 # ---------------------------------------------------------
 st.title("🚀 Finansal Özgürlük Kokpiti")
 
-# CANLI PİYASA & KAYNAKLAR
+# CANLI PİYASA
 st.subheader("🌍 Canlı Piyasa ve Kaynaklar")
 k1, k2, k3, k4, k5 = st.columns(5)
 
@@ -219,7 +222,7 @@ c3.metric("TOPLAM FON", f"{t_fon:,.0f} TL")
 
 st.markdown("---")
 
-# KÂR/ZARAR ANALİZİ (GERİ GELDİ!)
+# KÂR/ZARAR ANALİZİ
 st.subheader("📊 Kâr / Zarar Analizi")
 
 col1, col2, col3, col4 = st.columns(4)
@@ -241,22 +244,19 @@ with col4:
 
 st.markdown("---")
 
-# ALT BİLGİLER
-l_col, r_col = st.columns([2, 1])
+# GÜVENLİK BARI (TAM EKRAN)
+st.subheader("💳 Güvenlik ve Arbitraj Durumu")
+if in_borc > 0: oran = (val_ylb / in_borc) * 100
+elif val_ylb > 0: oran = 100
+else: oran = 0
 
-with l_col:
-    st.subheader("💳 Güvenlik")
-    if in_borc > 0: oran = (val_ylb / in_borc) * 100
-    elif val_ylb > 0: oran = 100
-    else: oran = 0
-    st.progress(min(int(oran), 100))
-    x1, x2, x3 = st.columns(3)
-    x1.metric("Borç", f"{in_borc:,.0f}")
-    x2.metric("Nakit", f"{val_ylb:,.0f}")
-    x3.metric("Durum", "GÜVENLİ" if (val_ylb-in_borc)>=0 else "RİSKLİ", f"{val_ylb-in_borc:,.0f}")
+st.progress(min(int(oran), 100))
 
-with r_col:
-    st.subheader("👶 Çocuk")
-    vf=get_yf("FROTO.IS"); vt=get_yf("THYAO.IS"); vp=get_yf("TUPRS.IS")
-    lf=st.number_input("FROTO",2); lt=st.number_input("THYAO",5); lp=st.number_input("TUPRS",30)
-    st.metric("Değer", f"{(lf*vf)+(lt*vt)+(lp*vp):,.0f} TL")
+b1, b2, b3 = st.columns(3)
+b1.metric("Kredi Kartı Borcu", f"{in_borc:,.0f} TL")
+b2.metric("Nakit Gücü (YLB)", f"{val_ylb:,.0f} TL")
+
+fark = val_ylb - in_borc
+durum = "GÜVENLİ ✅" if fark >= 0 else "RİSKLİ ⚠️"
+renk = "normal" if fark >= 0 else "inverse"
+b3.metric("Durum", durum, f"{fark:,.0f} TL", delta_color=renk)
