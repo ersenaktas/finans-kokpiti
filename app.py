@@ -11,45 +11,57 @@ import pytz
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Mühendis Portföyü", layout="wide", page_icon="🚀")
 
-# --- BAŞLANGIÇ AYARLARI (SESSION STATE) ---
-# Burası "Hafıza" bölümüdür. Sayfa yenilense bile değerleri tutar.
+# --- HAFIZA (SESSION STATE) ---
 if 'yas_fiyat' not in st.session_state: st.session_state['yas_fiyat'] = 13.43
-if 'yay_fiyat' not in st.session_state: st.session_state['yay_fiyat'] = 1283.30 # Güncel Fiyat
+if 'yay_fiyat' not in st.session_state: st.session_state['yay_fiyat'] = 1283.30
 if 'ylb_fiyat' not in st.session_state: st.session_state['ylb_fiyat'] = 1.40
 if 'last_update' not in st.session_state: st.session_state['last_update'] = "Henüz Yapılmadı"
 
 # ---------------------------------------------------------
-# 1. VERİ ÇEKME FONKSİYONLARI
+# 1. ÖZEL FONKSİYON: TEFAS CIMBIZLAYICI 🔍
 # ---------------------------------------------------------
 def fetch_fund_price(fund_code):
     """
-    Fiyat çekmeyi dener. Başarısız olursa 'None' döner (0 dönmez).
-    Böylece mevcut fiyatı bozmayız.
+    TEFAS sitesindeki 'Son Fiyat' kutusunu hedefler.
+    Resimdeki en soldaki kutuyu okur.
     """
-    # 1. Deneme: TEFAS
+    # 1. TEFAS (Devlet Sitesi)
     try:
         url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fund_code}"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(r.content, "html.parser")
-        val = soup.select_one(".top-list > li:nth-child(1) > span").text
-        return float(val.replace(",", "."))
-    except:
-        pass
+        # Tarayıcı gibi davran (Chrome/Windows)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': 'https://www.google.com/'
+        }
+        r = requests.get(url, headers=headers, timeout=10)
         
-    # 2. Deneme: FINTABLES
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.content, "html.parser")
+            
+            # TEFAS'taki o "Son Fiyat" kutusu HTML'de ".top-list" içindeki İLK elemandır.
+            # Resimdeki: 13,436836 yazan yer.
+            price_text = soup.select_one(".top-list > li:nth-child(1) > span").text
+            
+            # Virgülü noktaya çevirip sayı yap
+            return float(price_text.replace(",", "."))
+    except Exception as e:
+        print(f"TEFAS Hatası ({fund_code}): {e}")
+
+    # 2. YEDEK: FINTABLES
     try:
         url = f"https://fintables.com/fonlar/{fund_code}"
         headers = {'User-Agent': 'Mozilla/5.0'}
         r = requests.get(url, headers=headers, timeout=5)
         text = BeautifulSoup(r.content, "html.parser").get_text(" ", strip=True)
+        # "Son Fiyat 1.283,29" yapısını ara
         match = re.search(r'Son Fiyat\s*[:\s]*([\d\.]+,\d+)', text)
         if match:
              return float(match.group(1).replace('.', '').replace(',', '.'))
     except:
         pass
 
-    return None # Başarısız olursa None dön
+    return None # Hiçbiri çalışmazsa None dön (Sıfırlama!)
 
 @st.cache_data(ttl=900)
 def get_kayseri_gold():
@@ -57,7 +69,7 @@ def get_kayseri_gold():
     try:
         url = "https://www.kaysarder.org.tr/"
         headers = {'User-Agent': 'Mozilla/5.0'}
-        r = requests.get(url, headers=headers, timeout=5)
+        r = requests.get(url, headers=headers, timeout=8)
         text = BeautifulSoup(r.content, "html.parser").get_text(" ", strip=True)
         
         mc = re.search(r'25\s*ZİYNET.*?(\d+[\.,]\d+)', text, re.IGNORECASE)
@@ -72,12 +84,12 @@ def get_kayseri_gold():
     return prices
 
 # ---------------------------------------------------------
-# 2. GÜNCELLEME BUTONU MANTIĞI
+# 2. GÜNCELLEME BUTONU
 # ---------------------------------------------------------
 st.sidebar.header("🕹️ Komuta Merkezi")
 
-if st.sidebar.button("🔄 Fiyatları Güncelle"):
-    with st.spinner('Fiyatlar çekiliyor...'):
+if st.sidebar.button("🔄 Fiyatları GÜNCELLE"):
+    with st.spinner('TEFAS ve Kayseri taranıyor...'):
         # YAS
         new_yas = fetch_fund_price("YAS")
         if new_yas: st.session_state['yas_fiyat'] = new_yas
@@ -90,25 +102,21 @@ if st.sidebar.button("🔄 Fiyatları Güncelle"):
         new_ylb = fetch_fund_price("YLB")
         if new_ylb: st.session_state['ylb_fiyat'] = new_ylb
         
-        # Zaman Damgası
+        # Zaman
         tz = pytz.timezone("Turkey")
         st.session_state['last_update'] = datetime.now(tz).strftime("%H:%M:%S")
-        
-        st.cache_data.clear() # Cache'i temizle
+        st.cache_data.clear()
 
 st.sidebar.caption(f"Son İşlem: {st.session_state['last_update']}")
 
 # ---------------------------------------------------------
-# 3. VERİ GİRİŞLERİ (SESSION STATE KULLANIR)
+# 3. VERİ GİRİŞLERİ
 # ---------------------------------------------------------
 st.sidebar.markdown("---")
 st.sidebar.header("🎛️ Veri Girişi")
 
-# FONLAR (Değerleri session_state'den alır, yani hafızadan)
+# FONLAR
 st.sidebar.subheader("📈 Fonlar")
-# Burada 'value' yerine 'key' kullanmıyoruz çünkü manuel değişikliğin session'a yazılmasını istiyoruz ama
-# aynı zamanda kodun da oraya yazabilmesini istiyoruz. En güvenlisi value atamak.
-
 in_yas_fiyat = st.sidebar.number_input("YAS Fiyatı", value=st.session_state['yas_fiyat'], format="%.4f")
 in_yas_adet = st.sidebar.number_input("YAS Adet", value=734)
 
@@ -119,29 +127,25 @@ in_ylb_fiyat = st.sidebar.number_input("YLB Fiyatı", value=st.session_state['yl
 in_ylb_adet = st.sidebar.number_input("YLB Adet", value=39400)
 
 # ALTINLAR
-kayseri = get_kayseri_gold() # Altınlar genelde sorunsuz ama yine de koruyalım
+kayseri = get_kayseri_gold()
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🥇 Altınlar")
 banka_gr = st.sidebar.number_input("Banka Altın (Gr)", value=130)
 
-# Çeyrek (Otomatik gelirse al, gelmezse manuel kalır)
 def_c = kayseri["ceyrek"] if kayseri["ceyrek"] > 0 else 9600.0
 in_c_fiyat = st.sidebar.number_input("Çeyrek Fiyat", value=def_c)
 in_c_adet = st.sidebar.number_input("Çeyrek Adet", value=53)
 
-# Bilezik
 def_b = kayseri["bilezik"] if kayseri["bilezik"] > 0 else 5600.0
 in_b_fiyat = st.sidebar.number_input("Bilezik Gr Fiyatı", value=def_b)
 in_b_gr = st.sidebar.number_input("Bilezik Gram", value=10)
 
-# Tam
 def_t = kayseri["tam"] if kayseri["tam"] > 0 else 38400.0
 in_t_fiyat = st.sidebar.number_input("Tam Fiyat", value=def_t)
 in_t_adet = st.sidebar.number_input("Tam Adet", value=0)
 
 # DİĞER
-# Yahoo Finance verileri
 try:
     tickers = ["TRY=X", "GC=F", "EURTRY=X", "FROTO.IS", "THYAO.IS", "TUPRS.IS"]
     m_data = yf.download(tickers, period="2d", group_by='ticker', progress=False)
@@ -169,7 +173,6 @@ v_yay = in_yay_fiyat * in_yay_adet
 v_ylb = in_ylb_fiyat * in_ylb_adet
 t_fon = v_yas + v_yay + v_ylb
 
-# Has Altın Hesabı
 safe_has = (ons * usd_tl) / 31.10 if (ons>0 and usd_tl>0) else 3100.0
 v_banka = banka_gr * safe_has
 v_ziynet = (in_c_adet * in_c_fiyat) + (in_t_adet * in_t_fiyat)
@@ -184,16 +187,11 @@ net = t_fon + t_gold + t_euro
 # ---------------------------------------------------------
 st.title("🚀 Finansal Özgürlük Kokpiti")
 
-# Kaynak linkleri ekleyelim ki kontrol edebilin
-st.markdown("""
-<small>Fiyat Kontrol Linkleri: 
-<a href='https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=YAS' target='_blank'>YAS (TEFAS)</a> | 
-<a href='https://fintables.com/fonlar/YAY' target='_blank'>YAY (Fintables)</a> | 
-<a href='https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=YLB' target='_blank'>YLB (TEFAS)</a>
-</small>
+st.markdown(f"""
+<small>Son Güncelleme: {st.session_state['last_update']}</small>
 """, unsafe_allow_html=True)
 
-st.subheader("🏷️ Piyasa Göstergeleri")
+st.subheader("🏷️ Canlı Piyasa")
 k1, k2, k3, k4, k5 = st.columns(5)
 k1.metric("Gram Has", f"{safe_has:,.0f} TL")
 k2.metric("Dolar/TL", f"{usd_tl:.2f}")
