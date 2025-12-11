@@ -11,57 +11,66 @@ import pytz
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Mühendis Portföyü", layout="wide", page_icon="🚀")
 
-# --- HAFIZA (SESSION STATE) ---
-if 'yas_fiyat' not in st.session_state: st.session_state['yas_fiyat'] = 13.43
-if 'yay_fiyat' not in st.session_state: st.session_state['yay_fiyat'] = 1283.30
-if 'ylb_fiyat' not in st.session_state: st.session_state['ylb_fiyat'] = 1.40
-if 'last_update' not in st.session_state: st.session_state['last_update'] = "Henüz Yapılmadı"
+# ---------------------------------------------------------
+# 1. HAFIZA BAŞLATMA (SESSION STATE)
+# ---------------------------------------------------------
+# Burada hem güncel fiyatı hem de "Eski Fiyatı" (Prev) tutuyoruz.
+# Böylece değişim (Delta) hesaplayabiliriz.
+
+if 'init' not in st.session_state:
+    # YAS
+    st.session_state['yas_val'] = 13.43
+    st.session_state['yas_old'] = 13.43
+    st.session_state['yas_src'] = "Başlangıç"
+    
+    # YAY
+    st.session_state['yay_val'] = 1283.30
+    st.session_state['yay_old'] = 1283.30
+    st.session_state['yay_src'] = "Başlangıç"
+    
+    # YLB
+    st.session_state['ylb_val'] = 1.40
+    st.session_state['ylb_old'] = 1.40
+    st.session_state['ylb_src'] = "Başlangıç"
+    
+    st.session_state['last_update'] = "-"
+    st.session_state['init'] = True
 
 # ---------------------------------------------------------
-# 1. ÖZEL FONKSİYON: TEFAS CIMBIZLAYICI 🔍
+# 2. VERİ ÇEKME FONKSİYONLARI (KAYNAK İSMİ İLE)
 # ---------------------------------------------------------
-def fetch_fund_price(fund_code):
+def fetch_fund_data(fund_code):
     """
-    TEFAS sitesindeki 'Son Fiyat' kutusunu hedefler.
-    Resimdeki en soldaki kutuyu okur.
+    Hem Fiyatı hem de Kaynağı döner: (Fiyat, "Kaynak İsmi")
     """
-    # 1. TEFAS (Devlet Sitesi)
+    # 1. DENEME: TEFAS (Devlet)
     try:
         url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fund_code}"
-        # Tarayıcı gibi davran (Chrome/Windows)
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Referer': 'https://www.google.com/'
         }
-        r = requests.get(url, headers=headers, timeout=10)
-        
+        r = requests.get(url, headers=headers, timeout=5)
         if r.status_code == 200:
             soup = BeautifulSoup(r.content, "html.parser")
-            
-            # TEFAS'taki o "Son Fiyat" kutusu HTML'de ".top-list" içindeki İLK elemandır.
-            # Resimdeki: 13,436836 yazan yer.
-            price_text = soup.select_one(".top-list > li:nth-child(1) > span").text
-            
-            # Virgülü noktaya çevirip sayı yap
-            return float(price_text.replace(",", "."))
-    except Exception as e:
-        print(f"TEFAS Hatası ({fund_code}): {e}")
+            val = soup.select_one(".top-list > li:nth-child(1) > span").text
+            price = float(val.replace(",", "."))
+            return price, "TEFAS"
+    except: pass
 
-    # 2. YEDEK: FINTABLES
+    # 2. DENEME: FINTABLES
     try:
         url = f"https://fintables.com/fonlar/{fund_code}"
         headers = {'User-Agent': 'Mozilla/5.0'}
         r = requests.get(url, headers=headers, timeout=5)
         text = BeautifulSoup(r.content, "html.parser").get_text(" ", strip=True)
-        # "Son Fiyat 1.283,29" yapısını ara
         match = re.search(r'Son Fiyat\s*[:\s]*([\d\.]+,\d+)', text)
         if match:
-             return float(match.group(1).replace('.', '').replace(',', '.'))
-    except:
-        pass
+             price = float(match.group(1).replace('.', '').replace(',', '.'))
+             return price, "Fintables"
+    except: pass
 
-    return None # Hiçbiri çalışmazsa None dön (Sıfırlama!)
+    return None, None # Başarısız
 
 @st.cache_data(ttl=900)
 def get_kayseri_gold():
@@ -84,46 +93,58 @@ def get_kayseri_gold():
     return prices
 
 # ---------------------------------------------------------
-# 2. GÜNCELLEME BUTONU
+# 3. GÜNCELLEME BUTONU (DEĞİŞİM MANTIĞI)
 # ---------------------------------------------------------
 st.sidebar.header("🕹️ Komuta Merkezi")
 
-if st.sidebar.button("🔄 Fiyatları GÜNCELLE"):
-    with st.spinner('TEFAS ve Kayseri taranıyor...'):
-        # YAS
-        new_yas = fetch_fund_price("YAS")
-        if new_yas: st.session_state['yas_fiyat'] = new_yas
+if st.sidebar.button("🔄 Piyasayı Tara ve Güncelle"):
+    with st.spinner('TEFAS, Fintables ve Kayseri taranıyor...'):
         
-        # YAY
-        new_yay = fetch_fund_price("YAY")
-        if new_yay: st.session_state['yay_fiyat'] = new_yay
-        
-        # YLB
-        new_ylb = fetch_fund_price("YLB")
-        if new_ylb: st.session_state['ylb_fiyat'] = new_ylb
-        
-        # Zaman
+        # YAS GÜNCELLEME
+        p, s = fetch_fund_data("YAS")
+        if p:
+            st.session_state['yas_old'] = st.session_state['yas_val'] # Eskiyi sakla
+            st.session_state['yas_val'] = p # Yeniyi yaz
+            st.session_state['yas_src'] = s # Kaynağı yaz
+            
+        # YAY GÜNCELLEME
+        p, s = fetch_fund_data("YAY")
+        if p:
+            st.session_state['yay_old'] = st.session_state['yay_val']
+            st.session_state['yay_val'] = p
+            st.session_state['yay_src'] = s
+            
+        # YLB GÜNCELLEME
+        p, s = fetch_fund_data("YLB")
+        if p:
+            st.session_state['ylb_old'] = st.session_state['ylb_val']
+            st.session_state['ylb_val'] = p
+            st.session_state['ylb_src'] = s
+            
+        # ZAMAN
         tz = pytz.timezone("Turkey")
         st.session_state['last_update'] = datetime.now(tz).strftime("%H:%M:%S")
+        
         st.cache_data.clear()
 
-st.sidebar.caption(f"Son İşlem: {st.session_state['last_update']}")
+st.sidebar.caption(f"Son Tarama: {st.session_state['last_update']}")
 
 # ---------------------------------------------------------
-# 3. VERİ GİRİŞLERİ
+# 4. VERİ GİRİŞLERİ (SESSION STATE BAĞLANTILI)
 # ---------------------------------------------------------
 st.sidebar.markdown("---")
 st.sidebar.header("🎛️ Veri Girişi")
 
 # FONLAR
 st.sidebar.subheader("📈 Fonlar")
-in_yas_fiyat = st.sidebar.number_input("YAS Fiyatı", value=st.session_state['yas_fiyat'], format="%.4f")
+# Burada value=st.session_state[...] diyerek otomatik güncellenen değeri kutuya koyuyoruz
+in_yas_fiyat = st.sidebar.number_input("YAS Fiyat", value=st.session_state['yas_val'], format="%.4f")
 in_yas_adet = st.sidebar.number_input("YAS Adet", value=734)
 
-in_yay_fiyat = st.sidebar.number_input("YAY Fiyatı", value=st.session_state['yay_fiyat'], format="%.4f")
+in_yay_fiyat = st.sidebar.number_input("YAY Fiyat", value=st.session_state['yay_val'], format="%.4f")
 in_yay_adet = st.sidebar.number_input("YAY Adet", value=7)
 
-in_ylb_fiyat = st.sidebar.number_input("YLB Fiyatı", value=st.session_state['ylb_fiyat'], format="%.4f")
+in_ylb_fiyat = st.sidebar.number_input("YLB Fiyat", value=st.session_state['ylb_val'], format="%.4f")
 in_ylb_adet = st.sidebar.number_input("YLB Adet", value=39400)
 
 # ALTINLAR
@@ -166,7 +187,7 @@ in_eur_miktar = st.sidebar.number_input("Euro Miktarı", value=10410)
 in_borc = st.sidebar.number_input("Kredi Kartı Borcu", value=34321)
 
 # ---------------------------------------------------------
-# 4. HESAPLAMALAR
+# 5. HESAPLAMALAR
 # ---------------------------------------------------------
 v_yas = in_yas_fiyat * in_yas_adet
 v_yay = in_yay_fiyat * in_yay_adet
@@ -183,30 +204,49 @@ t_euro = in_eur_miktar * in_eur_kur
 net = t_fon + t_gold + t_euro
 
 # ---------------------------------------------------------
-# 5. EKRAN GÖSTERİMİ
+# 6. EKRAN GÖSTERİMİ (DELTA VE KAYNAK BİLGİSİ)
 # ---------------------------------------------------------
 st.title("🚀 Finansal Özgürlük Kokpiti")
 
 st.markdown(f"""
-<small>Son Güncelleme: {st.session_state['last_update']}</small>
+<small>Veriler <b>{st.session_state['last_update']}</b> saatinde çekilmiştir.</small>
 """, unsafe_allow_html=True)
 
-st.subheader("🏷️ Canlı Piyasa")
+# ÜST PİYASA BANDI
+st.subheader("🏷️ Canlı Piyasa & Değişimler")
 k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("Gram Has", f"{safe_has:,.0f} TL")
-k2.metric("Dolar/TL", f"{usd_tl:.2f}")
-k3.metric("Euro/TL", f"{in_eur_kur:.2f}")
-k4.metric("YAS Fiyat", f"{in_yas_fiyat:.4f}")
-k5.metric("YAY Fiyat", f"{in_yay_fiyat:.4f}")
+
+# DELTA HESAPLARI
+# Eğer fiyat yeni güncellendiyse (Old != Val), farkı gösterir.
+# Fark yoksa 0.00 yazar.
+delta_yas = st.session_state['yas_val'] - st.session_state['yas_old']
+delta_yay = st.session_state['yay_val'] - st.session_state['yay_old']
+delta_ylb = st.session_state['ylb_val'] - st.session_state['ylb_old']
+
+# Metric Kullanımı: label="İsim (Kaynak)", value="Fiyat", delta="Değişim"
+k1.metric(f"YAS ({st.session_state['yas_src']})", f"{in_yas_fiyat:.4f}", f"{delta_yas:+.4f}")
+k2.metric(f"YAY ({st.session_state['yay_src']})", f"{in_yay_fiyat:.4f}", f"{delta_yay:+.4f}")
+k3.metric(f"YLB ({st.session_state['ylb_src']})", f"{in_ylb_fiyat:.4f}", f"{delta_ylb:+.4f}")
+k4.metric("Dolar/TL (Yahoo)", f"{usd_tl:.2f}")
+k5.metric("Has Altın (Ons)", f"{safe_has:,.0f} TL")
+
+# ALTINLAR
+m1, m2 = st.columns(2)
+m1.metric(f"Çeyrek ({kayseri['src']})", f"{in_c_fiyat:,.0f} TL")
+m2.metric(f"Bilezik ({kayseri['src']})", f"{in_b_fiyat:,.0f} TL")
 
 st.markdown("---")
+
+# ANA KARTLAR
 c1, c2, c3 = st.columns(3)
 c1.metric("TOPLAM SERVET", f"{net:,.0f} TL")
 c2.metric("TOPLAM ALTIN", f"{t_gold:,.0f} TL")
 c3.metric("TOPLAM FON", f"{t_fon:,.0f} TL")
 
 st.markdown("---")
-st.subheader("📊 Fon Portföyü")
+
+# DETAYLAR
+st.subheader("📊 Portföy Dağılımı")
 f1, f2, f3 = st.columns(3)
 f1.metric("YAS (Koç)", f"{v_yas:,.0f} TL", f"{in_yas_adet} Adet")
 f2.metric("YAY (Tekn)", f"{v_yay:,.0f} TL", f"{in_yay_adet} Adet")
@@ -221,10 +261,10 @@ with l_col:
     elif v_ylb > 0: oran = 100
     else: oran = 0
     st.progress(min(int(oran), 100))
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Borç", f"{in_borc:,.0f}")
-    m2.metric("Nakit", f"{v_ylb:,.0f}")
-    m3.metric("Durum", "GÜVENLİ" if (v_ylb-in_borc)>=0 else "RİSKLİ", f"{v_ylb-in_borc:,.0f}")
+    x1, x2, x3 = st.columns(3)
+    x1.metric("Borç", f"{in_borc:,.0f}")
+    x2.metric("Nakit", f"{v_ylb:,.0f}")
+    x3.metric("Durum", "GÜVENLİ" if (v_ylb-in_borc)>=0 else "RİSKLİ", f"{v_ylb-in_borc:,.0f}")
 
 with r_col:
     st.subheader("👶 Çocuk")
