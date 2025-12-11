@@ -113,17 +113,17 @@ st.sidebar.subheader("📈 Fonlar (Adet & Maliyet)")
 with st.sidebar.expander("YAS (Koç)", expanded=True):
     in_yas_fiyat = st.number_input("YAS Fiyat", value=st.session_state['yas_val'], format="%.4f")
     in_yas_adet = st.number_input("YAS Adet", value=734)
-    in_yas_maliyet = st.number_input("YAS Maliyet", value=st.session_state['yas_cost'], format="%.4f")
+    in_yas_maliyet = st.number_input("YAS Ort. Maliyet", value=st.session_state['yas_cost'], format="%.4f")
 
 with st.sidebar.expander("YAY (Teknoloji)", expanded=True):
     in_yay_fiyat = st.number_input("YAY Fiyat", value=st.session_state['yay_val'], format="%.4f")
     in_yay_adet = st.number_input("YAY Adet", value=7)
-    in_yay_maliyet = st.number_input("YAY Maliyet", value=st.session_state['yay_cost'], format="%.4f")
+    in_yay_maliyet = st.number_input("YAY Ort. Maliyet", value=st.session_state['yay_cost'], format="%.4f")
 
 with st.sidebar.expander("YLB (Nakit)", expanded=False):
     in_ylb_fiyat = st.number_input("YLB Fiyat", value=st.session_state['ylb_val'], format="%.4f")
     in_ylb_adet = st.number_input("YLB Adet", value=39400)
-    in_ylb_maliyet = st.number_input("YLB Maliyet", value=st.session_state['ylb_cost'], format="%.4f")
+    in_ylb_maliyet = st.number_input("YLB Ort. Maliyet", value=st.session_state['ylb_cost'], format="%.4f")
 
 # --- ALTINLAR ---
 kayseri = get_kayseri_gold()
@@ -157,7 +157,7 @@ try:
 except:
     usd_tl, eur_tl, ons = 0, 0, 0
 
-# Euro maliyet varsayılan
+# Euro maliyet varsayılan (güncel kur)
 def_eur_cost = eur_tl if eur_tl > 0 else 49.97
 
 st.sidebar.markdown("---")
@@ -205,9 +205,9 @@ st.title("🚀 Finansal Özgürlük Kokpiti")
 st.subheader("🌍 Döviz ve Altın Piyasası")
 k1, k2, k3, k4, k5 = st.columns(5)
 
-k1.metric("Euro/TL", f"{in_eur_kur:.2f}", "Canlı")
-k2.metric("Dolar/TL", f"{usd_tl:.2f}", "Canlı")
-k3.metric("Has Altın (Gr)", f"{safe_has:,.0f} TL", "Global")
+k1.metric("Euro/TL", f"{in_eur_kur:.2f}", "Kaynak: Yahoo Fin")
+k2.metric("Dolar/TL", f"{usd_tl:.2f}", "Kaynak: Yahoo Fin")
+k3.metric("Has Altın (Gr)", f"{safe_has:,.0f} TL", "Kaynak: Global Ons")
 k4.metric("Çeyrek Altın", f"{in_c_fiyat:,.0f} TL", f"Kaynak: {kayseri['src']}")
 k5.metric("Bilezik (22 Ayar)", f"{in_b_fiyat:,.0f} TL", f"Kaynak: {kayseri['src']}")
 
